@@ -1,92 +1,62 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  reactCompiler: true,
+import { NextResponse } from 'next/server';
 
-  turbopack: {},
+export function middleware(request) {
+  // 1. إنشاء رقم عشوائي (Nonce)
+  const nonce = Buffer.from(crypto.randomUUID()).toString('base64');
 
-  // External packages for server components
-  serverExternalPackages: ['mongoose'],
+  // 2. كتابة سياسة الأمان باستخدام هذا الرقم
+  // لاحظ كيف استبدلنا 'unsafe-inline' بـ 'nonce-${nonce}'
+  const cspHeader = `
+    default-src 'self';
+    script-src 'self' 'nonce-${nonce}' 'strict-dynamic';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' blob: data: https:;
+    font-src 'self' data:;
+    object-src 'none';
+    base-uri 'self';
+    form-action 'self';
+    frame-ancestors 'none';
+    block-all-mixed-content;
+    upgrade-insecure-requests;
+  `;
 
-  // Server Actions configuration
-  experimental: {
-    serverActions: {
-      bodySizeLimit: '5mb', // زيادة الحد إلى 5MB
+  // إزالة المسافات الزائدة والأسطر الجديدة لجعل الهيدر نظيفاً
+  const contentSecurityPolicyHeaderValue = cspHeader
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // 3. إعداد الهيدرز للطلب
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-nonce', nonce); // نمرر الرقم للصفحة
+  requestHeaders.set(
+    'Content-Security-Policy',
+    contentSecurityPolicyHeaderValue
+  );
+
+  const response = NextResponse.next({
+    request: {
+      headers: requestHeaders,
     },
-  },
+  });
 
-  // Security headers
-  async headers() {
-    return [
-      {
-        source: '/:path*',
-        headers: [
-          {
-            key: 'X-DNS-Prefetch-Control',
-            value: 'on'
-          },
-          {
-            key: 'Strict-Transport-Security',
-            value: 'max-age=63072000; includeSubDomains; preload'
-          },
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY'
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff'
-          },
-          {
-            key: 'X-XSS-Protection',
-            value: '1; mode=block'
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'strict-origin-when-cross-origin'
-          },
-          {
-            key: 'Permissions-Policy',
-            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()'
-          },
-          {
-            key: 'Content-Security-Policy',
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
-              "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: https:",
-              "font-src 'self' data:",
-              "connect-src 'self'",
-              "frame-ancestors 'none'",
-              "base-uri 'self'",
-              "form-action 'self'",
-              "upgrade-insecure-requests"
-            ].join('; ')
-          }
-        ]
-      }
-    ];
-  },
+  // 4. وضع الهيدر في الاستجابة النهائية
+  response.headers.set(
+    'Content-Security-Policy',
+    contentSecurityPolicyHeaderValue
+  );
 
-  // Production optimizations
-  compress: true,
-  poweredByHeader: false,
-  
-  // Image optimization
-  images: {
-    formats: ['image/avif', 'image/webp'],
-    minimumCacheTTL: 60,
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-      {
-        protocol: 'http',
-        hostname: '**',
-      },
-    ],
-  },
+  return response;
+}
+
+// تحديد الصفحات التي يطبق عليها (استثناء الصور والملفات الثابتة)
+export const config = {
+  matcher: [
+    {
+      source: '/((?!api|_next/static|_next/image|favicon.ico).*)',
+      missing: [
+        { type: 'header', key: 'next-router-prefetch' },
+        { type: 'header', key: 'purpose', value: 'prefetch' },
+      ],
+    },
+  ],
 };
-
-export default nextConfig;
