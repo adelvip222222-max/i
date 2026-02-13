@@ -15,7 +15,7 @@ export default async function DashboardPage() {
   const siteCheck = await checkUserSite();
   
   if (siteCheck.needsAuth) {
-    redirect('/admin-login');
+    redirect('/');
   }
   
   if (!siteCheck.hasSite) {
