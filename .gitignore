@@ -60,3 +60,7 @@ logs
 
 # Code Snippet Assistant
 .code-snippet-assistant/
+# Windows system folders
+AppData/
+AppData/Local/
+AppData/Roaming/
