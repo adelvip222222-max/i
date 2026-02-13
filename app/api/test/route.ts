@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { connectDB } from '@/lib/db';
 import mongoose from 'mongoose';
-import { PublicUser, User } from '@/models';
+import {  User } from '@/models';
 
 export const runtime = 'nodejs';
 
@@ -10,7 +10,6 @@ export async function GET() {
     // Check database connection
     await connectDB();
     const users = await User.find({});
-   // const supscripers = await PublicUser.find({})
     return NextResponse.json({ users });
   
   }catch

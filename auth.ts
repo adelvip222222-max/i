@@ -1,3 +1,4 @@
+// app/api/auth/[...nextauth]/route.ts
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { authConfig } from './auth.config';
@@ -8,14 +9,13 @@ import { z } from 'zod';
 import { logger } from './lib/logger';
 import { authLimiter } from './lib/rate-limit';
 
-// Login attempt tracking for security
+// Login attempt tracking
 const loginAttempts = new Map<string, { count: number; lastAttempt: number }>();
 
-// Clean up old login attempts every 15 minutes
+// Cleanup old login attempts every 15 minutes
 setInterval(() => {
   const now = Date.now();
   const fifteenMinutes = 15 * 60 * 1000;
-  
   for (const [email, data] of loginAttempts.entries()) {
     if (now - data.lastAttempt > fifteenMinutes) {
       loginAttempts.delete(email);
@@ -23,12 +23,12 @@ setInterval(() => {
   }
 }, 15 * 60 * 1000);
 
+// Fetch user from DB
 async function getUser(email: string) {
   try {
     await connectDB();
-    // Select only necessary fields, exclude sensitive data
     const user = await User.findOne({ email })
-      .select('_id email password name')
+      .select('_id email password name role')
       .lean();
     return user;
   } catch (error) {
@@ -37,22 +37,17 @@ async function getUser(email: string) {
   }
 }
 
+// Check login attempts
 function checkLoginAttempts(email: string): boolean {
   const attempts = loginAttempts.get(email);
   const now = Date.now();
   const fifteenMinutes = 15 * 60 * 1000;
 
-  if (!attempts) {
-    return true; // First attempt
-  }
-
-  // Reset if last attempt was more than 15 minutes ago
+  if (!attempts) return true;
   if (now - attempts.lastAttempt > fifteenMinutes) {
     loginAttempts.delete(email);
     return true;
   }
-
-  // Block if more than 5 attempts
   if (attempts.count >= 5) {
     logger.securityEvent('login_attempts_exceeded', {
       email,
@@ -61,30 +56,22 @@ function checkLoginAttempts(email: string): boolean {
     });
     return false;
   }
-
   return true;
 }
 
+// Record login attempt
 function recordLoginAttempt(email: string, success: boolean) {
   const now = Date.now();
   const attempts = loginAttempts.get(email);
 
   if (success) {
-    // Clear attempts on successful login
     loginAttempts.delete(email);
     logger.authEvent('login_success', email, true);
   } else {
-    // Increment failed attempts
     if (attempts) {
-      loginAttempts.set(email, {
-        count: attempts.count + 1,
-        lastAttempt: now,
-      });
+      loginAttempts.set(email, { count: attempts.count + 1, lastAttempt: now });
     } else {
-      loginAttempts.set(email, {
-        count: 1,
-        lastAttempt: now,
-      });
+      loginAttempts.set(email, { count: 1, lastAttempt: now });
     }
     logger.authEvent('login_failed', email, false);
   }
@@ -94,65 +81,79 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
   ...authConfig,
   providers: [
     Credentials({
+      name: 'Credentials',
       async authorize(credentials) {
         try {
-          // Validate credentials format
-          const parsedCredentials = z
-            .object({ 
+          // Validate format
+          const parsed = z
+            .object({
               email: z.string().email().toLowerCase().trim(),
-              password: z.string().min(6).max(100)
+              password: z.string().min(6).max(100),
             })
             .safeParse(credentials);
 
-          if (!parsedCredentials.success) {
+          if (!parsed.success) {
             logger.warn('Invalid credentials format', {
-              errors: parsedCredentials.error.errors,
+              errors: parsed.error.errors,
             });
             return null;
           }
 
-          const { email, password } = parsedCredentials.data;
+          const { email, password } = parsed.data;
 
-          // Check rate limiting
+          // Rate limiting
           const rateLimitResult = await authLimiter.check(email);
           if (!rateLimitResult.success) {
-            logger.securityEvent('rate_limit_exceeded', {
-              email,
-              type: 'authentication',
-            });
+            logger.securityEvent('rate_limit_exceeded', { email, type: 'authentication' });
             return null;
           }
 
-          // Check login attempts
-          if (!checkLoginAttempts(email)) {
-            return null;
+          // Login attempts
+          if (!checkLoginAttempts(email)) return null;
+
+          // ✅ Super Admin check (from env, using bcrypt hash if available)
+          if (email === process.env.SUPER_ADMIN_EMAIL) {
+            const superAdminHash = process.env.SUPER_ADMIN_HASH;
+            const passwordMatches = superAdminHash
+              ? await bcrypt.compare(password, superAdminHash)
+              : password === process.env.ADMIN_PASSWORD; // fallback for dev
+
+            if (passwordMatches) {
+              recordLoginAttempt(email, true);
+              return {
+                id: 'super-admin',
+                email,
+                name: 'Super Admin',
+                role: 'super-admin',
+              };
+            } else {
+              recordLoginAttempt(email, false);
+              return null;
+            }
           }
 
-          // Fetch user
+          // Normal users from DB
           const user = await getUser(email);
-          
           if (!user) {
             recordLoginAttempt(email, false);
-            // Use timing-safe comparison to prevent user enumeration
-            await bcrypt.compare(password, '$2a$10$dummyhashtopreventtimingattack');
+            await bcrypt.compare(password, '$2a$10$dummyhashtopreventtimingattack'); // timing safe
             return null;
           }
 
-          // Verify password
           const passwordsMatch = await bcrypt.compare(password, user.password);
-          
           if (!passwordsMatch) {
             recordLoginAttempt(email, false);
             return null;
           }
 
-          // Successful login
+          // Success
           recordLoginAttempt(email, true);
-          
+
           return {
             id: user._id.toString(),
             email: user.email,
             name: user.name,
+            role: user.role || 'user',
           };
         } catch (error) {
           logger.error('Authorization error', error as Error);
@@ -163,46 +164,44 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
   ],
   session: {
     strategy: 'jwt',
-    maxAge: 7 * 24 * 60 * 60, // 7 days (reduced from 30 for better security)
-    updateAge: 24 * 60 * 60, // Update session every 24 hours
+    maxAge: 7 * 24 * 60 * 60,
+    updateAge: 24 * 60 * 60,
   },
   callbacks: {
     async jwt({ token, user, trigger }) {
-      // Add user data to token on sign in
       if (user) {
         token.id = user.id;
         token.email = user.email;
         token.name = user.name;
-        token.userType = 'admin'; // تمييز نوع المستخدم
-        token.iat = Math.floor(Date.now() / 1000); // Issued at
+        token.role = user.role;
+        token.userType = user.role;
+        token.iat = Math.floor(Date.now() / 1000);
       }
 
-      // Refresh token data on update
       if (trigger === 'update') {
         const dbUser = await getUser(token.email as string);
         if (dbUser) {
           token.name = dbUser.name;
+          token.role = dbUser.role || 'user';
         }
       }
 
       return token;
     },
     async session({ session, token }) {
-      // Add token data to session
       if (token && session.user) {
         session.user.id = token.id as string;
         session.user.email = token.email as string;
         session.user.name = token.name as string;
+        session.user.role = token.role as 'admin' | 'super-admin' | 'user';
       }
       return session;
     },
-    async signIn({ user, account }) {
-      // Additional sign-in validation
+    async signIn({ user }) {
       if (!user?.email) {
         logger.warn('Sign-in attempt without email');
         return false;
       }
-
       logger.authEvent('sign_in', user.id, true);
       return true;
     },
@@ -218,13 +217,13 @@ export const { auth, signIn, signOut, handlers } = NextAuth({
       }
     },
   },
-  // Security options
   useSecureCookies: process.env.NODE_ENV === 'production',
   cookies: {
     sessionToken: {
-      name: process.env.NODE_ENV === 'production' 
-        ? '__Secure-next-auth.session-token'
-        : 'next-auth.session-token',
+      name:
+        process.env.NODE_ENV === 'production'
+          ? '__Secure-next-auth.session-token'
+          : 'next-auth.session-token',
       options: {
         httpOnly: true,
         sameSite: 'lax',

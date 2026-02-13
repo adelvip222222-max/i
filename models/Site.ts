@@ -27,7 +27,7 @@ const SiteSchema = new Schema<ISite>(
   {
     userId: { 
       type: Schema.Types.ObjectId, 
-      ref: 'User', // تغيير من PublicUser إلى User
+      ref: 'User', // تغيير من PubliUser إلى User
       required: true, 
       unique: true // كل مستخدم يملك سيت واحد فقط
     },

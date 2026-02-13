@@ -4,17 +4,22 @@ import nodemailer from 'nodemailer';
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
-    user: process.env.EMAIL_USER || 'adelvip222222@gmail.com',
-    pass: process.env.EMAIL_PASSWORD || 'uymt egzo zalv swsw',
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASSWORD,
   },
 });
+
+// التحقق من وجود بيانات البريد
+if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+  console.error('⚠️ Email credentials not configured. Please set EMAIL_USER and EMAIL_PASSWORD in .env file');
+}
 
 // إرسال بريد التحقق
 export async function sendVerificationEmail(email: string, token: string) {
   const verificationUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/verify-email?token=${token}`;
 
   const mailOptions = {
-    from: process.env.EMAIL_USER || 'adelvip222222@gmail.com',
+    from: process.env.EMAIL_USER,
     to: email,
     subject: 'تأكيد البريد الإلكتروني - 4IT',
     html: `
@@ -72,7 +77,7 @@ export async function sendPasswordResetEmail(email: string, token: string) {
   const resetUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/reset-password?token=${token}`;
 
   const mailOptions = {
-    from: process.env.EMAIL_USER || 'adelvip222222@gmail.com',
+    from: process.env.EMAIL_USER,
     to: email,
     subject: 'استرداد كلمة المرور - 4IT',
     html: `
@@ -132,7 +137,7 @@ export async function sendPasswordResetEmail(email: string, token: string) {
 // إرسال إشعار انتهاء الاشتراك
 export async function sendSubscriptionExpiryEmail(email: string, siteName: string, daysLeft: number) {
   const mailOptions = {
-    from: process.env.EMAIL_USER || 'adelvip222222@gmail.com',
+    from: process.env.EMAIL_USER,
     to: email,
     subject: `تنبيه: اشتراكك في ${siteName} على وشك الانتهاء`,
     html: `

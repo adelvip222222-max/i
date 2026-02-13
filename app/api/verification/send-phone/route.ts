@@ -20,7 +20,7 @@ async function sendSMS(phone: string, code: string) {
     
     // إرسال رمز التحقق عبر SMS
     await everify.startVerification({
-      method: "sms",
+      method: "SMS",
       phoneNumber: phone,
     });
     

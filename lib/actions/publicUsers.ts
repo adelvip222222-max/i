@@ -4,7 +4,6 @@ import { connectDB } from '@/lib/db';
 import { User } from '@/models';
 import bcrypt from 'bcryptjs';
 import { revalidatePath } from 'next/cache';
-import { signInPublic } from '@/lib/auth-public';
 import { AuthError } from 'next-auth';
 
 export async function registerUser(formData: FormData) {
@@ -52,35 +51,33 @@ export async function registerUser(formData: FormData) {
   }
 }
 
-export async function loginPublicUser(formData: FormData) {
-  try {
-    const email = formData.get('email') as string;
-    const password = formData.get('password') as string;
+// export async function loginPublicUser(formData: FormData) {
+//   try {
+//     const email = formData.get('email') as string;
+//     const password = formData.get('password') as string;
 
-    if (!email || !password) {
-      return { success: false, error: 'البريد الإلكتروني وكلمة المرور مطلوبان' };
-    }
+//     if (!email || !password) {
+//       return { success: false, error: 'البريد الإلكتروني وكلمة المرور مطلوبان' };
+//     }
 
-    await signInPublic('credentials', {
-      email,
-      password,
-      redirect: false,
-    });
+//     await signInPublic('credentials', {
+//       email,
+//       password,
+//       redirect: false,
+//     });
 
-    return { success: true };
-  } catch (error) {
-    if (error instanceof AuthError) {
-      return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' };
-    }
-    console.error('Error logging in:', error);
-    return { success: false, error: 'فشل في تسجيل الدخول' };
-  }
-}
+//     return { success: true };
+//   } catch (error) {
+//     if (error instanceof AuthError) {
+//       return { success: false, error: 'البريد الإلكتروني أو كلمة المرور غير صحيحة' };
+//     }
+//     console.error('Error logging in:', error);
+//     return { success: false, error: 'فشل في تسجيل الدخول' };
+//   }
+// }
 
 // Keep old function for backward compatibility
-export async function loginUser(formData: FormData) {
-  return loginPublicUser(formData);
-}
+
 
 export async function getUserProfile(userId: string) {
   try {
