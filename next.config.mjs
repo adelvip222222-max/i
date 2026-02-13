@@ -1,20 +1,38 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // تفعيل مترجم React الجديد (تجريبي - تأكد أن نسختك تدعمه)
   reactCompiler: true,
 
+  // إعدادات Turbopack
   turbopack: {},
 
-  // External packages for server components
+  // الحزم التي يجب استثناؤها من التجميع (للتعامل مع Mongoose)
   serverExternalPackages: ['mongoose'],
 
-  // Server Actions configuration
+  // إعدادات Server Actions (لرفع الملفات الكبيرة)
   experimental: {
     serverActions: {
-      bodySizeLimit: '5mb', // زيادة الحد إلى 5MB
+      bodySizeLimit: '5mb',
     },
   },
 
-  // Security headers
+  // تحسينات الصور
+  images: {
+    formats: ['image/avif', 'image/webp'],
+    minimumCacheTTL: 60,
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '**', // يسمح بكل الصور من روابط HTTPS
+      },
+      {
+        protocol: 'http',
+        hostname: '**',
+      },
+    ],
+  },
+
+  // إعدادات الأمان (Headers)
   async headers() {
     return [
       {
@@ -48,15 +66,17 @@ const nextConfig = {
             key: 'Permissions-Policy',
             value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()'
           },
+          // إعدادات Content-Security-Policy
+          // ملاحظة: إذا كنت تستخدم Middleware للـ CSP، يفضل إزالة هذا الجزء لتجنب التكرار
           {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
               "script-src 'self' 'unsafe-eval' 'unsafe-inline'",
               "style-src 'self' 'unsafe-inline'",
-              "img-src 'self' data: https:",
+              "img-src 'self' data: blob: https:", // تمت إضافة blob لدعم رفع الصور
               "font-src 'self' data:",
-              "connect-src 'self'",
+              "connect-src 'self' https:", // تمت إضافة https للسماح بالاتصال بالـ APIs الخارجية
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
@@ -68,25 +88,9 @@ const nextConfig = {
     ];
   },
 
-  // Production optimizations
+  // تحسينات الإنتاج
   compress: true,
   poweredByHeader: false,
-  
-  // Image optimization
-  images: {
-    formats: ['image/avif', 'image/webp'],
-    minimumCacheTTL: 60,
-    remotePatterns: [
-      {
-        protocol: 'https',
-        hostname: '**',
-      },
-      {
-        protocol: 'http',
-        hostname: '**',
-      },
-    ],
-  },
 };
 
 export default nextConfig;
